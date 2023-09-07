@@ -1,0 +1,29 @@
+device: cuda:0
+epochs: 100
+model:
+  args: null
+  load_ckpt: null
+  type: UNet
+optimizer:
+  args:
+    lr: 0.001
+  type: Adam
+train_dataset:
+  args:
+    batch_size: 8
+    shuffle: True
+    num_workers: 0
+  augmentation: null
+  loader_args: null
+  type: FisheyeDataset
+val_dataset:
+  args:
+    batch_size: 2
+    shuffle: True
+    num_workers: 0
+  augmentation: null
+  loader_args: null
+  type: FisheyeDataset
+wandb:
+  run_name: customdata_with_rousseau
+  use: true
