@@ -30,7 +30,7 @@ def mIoU(input, target):
         iou += inter / union
         
     if iou == np.nan:
-        return 0
+        return torch.tensor(0)
     return iou / C 
 
 def main(args):
@@ -45,8 +45,8 @@ def main(args):
         ]
     )
 
-    train_ds = getattr(datasets, args.train_dataset.type)(csv_file='.\\open\\train_source.csv', transform=transform)
-    val_ds = getattr(datasets, args.val_dataset.type)(csv_file='.\\open\\val_source.csv', transform=transform)
+    train_ds = getattr(datasets, args.train_dataset.type)(csv_file='./data/train_source.csv', transform=transform)
+    val_ds = getattr(datasets, args.val_dataset.type)(csv_file='./data/val_source.csv', transform=transform)
     train_dataloader = DataLoader(train_ds, **args.train_dataset.args)
     val_dataloader = DataLoader(val_ds, **args.val_dataset.args)
 
