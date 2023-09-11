@@ -37,22 +37,22 @@ def mIoU(input, target):
 def main(args):
     curdate = datetime.now().strftime("%Y%m%d-%H-%M-%S")
     if os.listdir("./experiments") == []:
-        expr_num = "001"
+        expr_num = 1
     else:
         expr_num = int(sorted(os.listdir("./experiments"), key=lambda x: int(x[:3]))[-1][:3]) + 1
     expr_save_path = os.path.join("./experiments", f"{expr_num:03d}-{curdate}")
     os.makedirs(expr_save_path, exist_ok=True)
     
     if args.wandb.use:
-        wandb.init(entity="lijm1358", project="vmt", name=args.wandb.run_name, config=args)
+        wandb.init(entity="lijm1358", project="fisheye_segmentation", name=args.wandb.run_name, config=args)
     
     device = args.device
     
     train_transform = getattr(datasets.augmentations, args.train_dataset.transform)()
     val_transform = getattr(datasets.augmentations, args.train_dataset.transform)()
     # train validation dataset, dataloader
-    train_ds = getattr(datasets, args.train_dataset.type)(csv_file='./open/train_source.csv', transform=train_transform)
-    val_ds = getattr(datasets, args.val_dataset.type)(csv_file='./open/val_source.csv', transform=val_transform)
+    train_ds = getattr(datasets, args.train_dataset.type)(csv_file='./data/train_source.csv', transform=train_transform)
+    val_ds = getattr(datasets, args.val_dataset.type)(csv_file='./data/val_source.csv', transform=val_transform)
     train_dataloader = DataLoader(train_ds, **args.train_dataset.args)
     val_dataloader = DataLoader(val_ds, **args.val_dataset.args)
 
@@ -73,6 +73,10 @@ def main(args):
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         cur_epoch = checkpoint['epoch']
         print("model loaded from: ", args.model.load_from)
+        
+    best_val_metric = 0
+    patience = 5
+    earlystop_counter = 0
 
     # training loop
     for epoch in range(cur_epoch, args.epochs):  # 20 에폭 동안 학습합니다.
@@ -126,6 +130,21 @@ def main(args):
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict()
         }, os.path.join(expr_save_path, f"{epoch+1:02d}.pt"))
+        
+        if best_val_metric < epoch_metric_val/len(val_dataloader):
+            print(f"validation metric improved from {best_val_metric:.4f} to {epoch_metric_val/len(val_dataloader):.4f}")
+            best_val_metric = epoch_metric_val/len(val_dataloader)
+            earlystop_counter = 0
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict()
+            }, os.path.join(expr_save_path, "best.pt"))
+        else:
+            earlystop_counter += 1
+            if earlystop_counter >= patience:
+                print("early stopping")
+                break
     
 
 if __name__ == '__main__':
