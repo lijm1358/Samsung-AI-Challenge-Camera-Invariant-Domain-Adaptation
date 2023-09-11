@@ -2,7 +2,7 @@ device: cuda:0
 epochs: 100
 model:
   args: null
-  load_ckpt: null
+  load_from: experiments/010-20230911-13-10-08/06.pt
   type: UNet
 optimizer:
   args:
@@ -10,18 +10,18 @@ optimizer:
   type: Adam
 train_dataset:
   args:
-    batch_size: 8
+    batch_size: 4
     shuffle: True
     num_workers: 0
-  augmentation: null
+  transform: BaseAugmentation
   loader_args: null
   type: FisheyeDataset
 val_dataset:
   args:
     batch_size: 2
-    shuffle: True
+    shuffle: False
     num_workers: 0
-  augmentation: null
+  transform: BaseAugmentation
   loader_args: null
   type: FisheyeDataset
 wandb:
