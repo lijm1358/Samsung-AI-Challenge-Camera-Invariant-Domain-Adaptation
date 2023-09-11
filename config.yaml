@@ -1,5 +1,6 @@
 device: cuda:0
 epochs: 100
+earlystop_patience: 10
 model:
   args: null
   load_from: null
