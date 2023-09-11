@@ -6,7 +6,7 @@ import pandas as pd
 
 class FisheyeDataset(Dataset):
     def __init__(self, csv_file, transform=None, infer=False):
-        self.csv_path = "./open"
+        self.csv_path = "./data"
         self.data = pd.read_csv(csv_file)
         self.transform = transform
         self.infer = infer

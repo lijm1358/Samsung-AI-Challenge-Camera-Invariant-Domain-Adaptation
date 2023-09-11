@@ -40,7 +40,7 @@ def main(args):
         expr_num = 1
     else:
         expr_num = int(sorted(os.listdir("./experiments"), key=lambda x: int(x[:3]))[-1][:3]) + 1
-    expr_save_path = os.path.join("./experiments", f"{expr_num:03d}-{curdate}")
+    expr_save_path = os.path.join("./experiments", f"{expr_num:03d}-{curdate}-{args.wandb.run_name}")
     os.makedirs(expr_save_path, exist_ok=True)
     
     if args.wandb.use:
@@ -48,13 +48,16 @@ def main(args):
     
     device = args.device
     
-    train_transform = getattr(datasets.augmentations, args.train_dataset.transform)()
-    val_transform = getattr(datasets.augmentations, args.train_dataset.transform)()
+    train_transform = getattr(datasets.augmentations, args.train_dataset.transform.type)(**args.train_dataset.transform.args)
     # train validation dataset, dataloader
     train_ds = getattr(datasets, args.train_dataset.type)(csv_file='./data/train_source.csv', transform=train_transform)
-    val_ds = getattr(datasets, args.val_dataset.type)(csv_file='./data/val_source.csv', transform=val_transform)
     train_dataloader = DataLoader(train_ds, **args.train_dataset.args)
-    val_dataloader = DataLoader(val_ds, **args.val_dataset.args)
+    
+    val_dataloaders = []
+    for val_ds in args.val_dataset:
+        val_transform = getattr(datasets.augmentations, val_ds.transform.type)(**val_ds.transform.args)
+        val_dataset = getattr(datasets, val_ds.type)(csv_file='./data/val_source.csv', transform=val_transform)
+        val_dataloaders.append(DataLoader(val_dataset, **val_ds.args))
 
     print("train dataset length: ", len(train_ds))
     print("val dataset length: ", len(val_ds))
@@ -103,26 +106,34 @@ def main(args):
         print(f'Epoch {epoch+1}, Loss: {epoch_loss/len(train_dataloader)}, mIoU: {epoch_metric/len(train_dataloader)}')
         
         print("validation")
-        epoch_loss_val = 0
-        epoch_metric_val = 0
-        with torch.no_grad():
-            for i, (images, masks) in enumerate(tqdm(val_dataloader)):
-                images = images.float().to(device)
-                masks = masks.long().to(device)
+        model.eval()
+        val_loss_list = []
+        val_metric_list = []
+        for val_dataloader in val_dataloaders:
+            epoch_loss_val = 0
+            epoch_metric_val = 0
+            with torch.no_grad():
+                for i, (images, masks) in enumerate(tqdm(val_dataloader)):
+                    images = images.float().to(device)
+                    masks = masks.long().to(device)
 
-                outputs = model(images)
-                loss = criterion(outputs, masks.squeeze(1))
+                    outputs = model(images)
+                    loss = criterion(outputs, masks.squeeze(1))
 
-                epoch_loss_val += loss.item()
-                epoch_metric_val += mIoU(outputs, masks)
+                    epoch_loss_val += loss.item()
+                    epoch_metric_val += mIoU(outputs, masks)
 
-        print(f'Epoch {epoch+1}, Loss: {epoch_loss_val/len(val_dataloader)}, mIoU: {epoch_metric_val/len(val_dataloader)}')
+            print(f'Epoch {epoch+1}, Loss: {epoch_loss_val/len(val_dataloader)}, mIoU: {epoch_metric_val/len(val_dataloader)}')
+            val_loss_list.append(epoch_loss_val/len(val_dataloader))
+            val_metric_list.append(epoch_metric_val/len(val_dataloader))
         
         wandb.log({
             "train_loss": epoch_loss/len(train_dataloader),
             "train_mIoU": epoch_metric/len(train_dataloader),
-            "val_loss": epoch_loss_val/len(val_dataloader),
-            "val_mIoU": epoch_metric_val/len(val_dataloader)
+            "val_loss_1": val_loss_list[0],
+            "val_mIoU_1": val_metric_list[0],
+            "val_loss_2": val_loss_list[1],
+            "val_mIoU_2": val_metric_list[1],
         })
         
         torch.save({
