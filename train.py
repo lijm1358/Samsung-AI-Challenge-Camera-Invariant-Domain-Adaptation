@@ -18,6 +18,8 @@ import yaml
 from easydict import EasyDict
 import wandb
 
+import segmentation_models_pytorch as smp
+
 
 def mIoU(input, target):
     # input: (N, C, H, W) | target: (N, H, W)
@@ -62,7 +64,11 @@ def main(args):
     print("train dataset length: ", len(train_ds))
     print("val dataset length: ", len(val_ds))
     
-    model = getattr(models, args.model.type)().to(device)
+    if args.model.lib == "smp":
+        print(getattr(smp, args.model.type))
+        model = getattr(smp, args.model.type)(**args.model.args).to(device)
+    else:
+        model = getattr(models, args.model.type)().to(device)
 
     # loss function과 optimizer 정의
     criterion = torch.nn.CrossEntropyLoss()

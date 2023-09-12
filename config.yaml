@@ -1,9 +1,14 @@
 device: cuda:0
 epochs: 100
 model:
-  args: null
+  lib: smp
+  args: 
+    encoder_name: resnet34
+    encoder_weights: imagenet
+    in_channels: 3
+    classes: 13
   load_from: null
-  type: UNet
+  type: Unet
 optimizer:
   args:
     lr: 0.001
@@ -50,5 +55,5 @@ val_dataset:
   loader_args: null
   type: FisheyeDataset
 wandb:
-  run_name: fisheye_aug
+  run_name: smptest
   use: true
