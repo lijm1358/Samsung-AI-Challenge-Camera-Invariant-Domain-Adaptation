@@ -84,7 +84,7 @@ def main(args):
         print("model loaded from: ", args.model.load_from)
         
     best_val_metric = 0
-    patience = 5
+    patience = args.earlystop_patience
     earlystop_counter = 0
 
     # training loop
