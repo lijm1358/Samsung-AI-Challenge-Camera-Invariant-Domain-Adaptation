@@ -22,7 +22,7 @@ import wandb
 import segmentation_models_pytorch as smp
 
 from utils import make_expr_directory
-from runner import base_trainer, validator
+import runner
 
 
 def mIoU(input, target):
@@ -86,6 +86,10 @@ def main(cfg):
     patience = cfg.earlystop.patience
     earlystop_counter = 0
     
+    # runner
+    train_runner = getattr(runner, cfg.runner.train)
+    val_runner = getattr(runner, cfg.runner.val)
+    
     # 실험 정보 출력
     print()
     print("model: ", cfg.model.type, f"({cfg.model.lib})")
@@ -103,13 +107,14 @@ def main(cfg):
         print(f"Epoch {epoch+1}/{cfg.epochs}")
         print("------------------------")
         print('training')
-        train_results = base_trainer(model, train_dataloader, optimizer, criterion, mIoU, device)
+        train_loss_results, train_metric_results = train_runner(model, train_dataloader, optimizer, criterion, mIoU, device)
         
         print("\nvalidation")
-        valid_loss_results, valid_metric_results = validator(model, val_dataloaders, criterion, mIoU, device)
+        valid_loss_results, valid_metric_results = val_runner(model, val_dataloaders, criterion, mIoU, device)
         
         # wandb logging
-        wandb.log({**train_results, **valid_loss_results, **valid_metric_results})
+        wandb.log({**train_loss_results, **train_metric_results, **valid_loss_results, **valid_metric_results})
+        print(f'Epoch {epoch+1} - ', {**train_loss_results, **train_metric_results, **valid_loss_results, **valid_metric_results})
         
         # save model
         torch.save({
@@ -119,7 +124,7 @@ def main(cfg):
         }, os.path.join(expr_save_path, f"{epoch+1:02d}.pt"))
         
         # early stopping
-        valid_comparison_value = valid_loss_results.values()[0] if cfg.earlystop.monitor == "val_loss" else valid_metric_results.values()[0]
+        valid_comparison_value = list(valid_loss_results.values())[0] if cfg.earlystop.monitor == "val_loss" else list(valid_metric_results.values())[0]
         
         if cfg.earlystop.monitor == "val_loss":
             _best_criterion_value = -best_criterion_value
@@ -129,8 +134,8 @@ def main(cfg):
             _valid_comparison_value = valid_comparison_value
         
         if _best_criterion_value < _valid_comparison_value:
-            print(f"validation metric improved from {best_criterion_value:.4f} to {valid_comparison_value:.4f}")
-            valid_metric_results = valid_comparison_value
+            print(f"validation metric/loss improved from {best_criterion_value:.4f} to {valid_comparison_value:.4f}")
+            best_criterion_value = valid_comparison_value
             earlystop_counter = 0
             torch.save({
                 'epoch': epoch,
@@ -142,6 +147,8 @@ def main(cfg):
             if earlystop_counter >= patience:
                 print("early stopping")
                 break
+            
+        print()
     
 
 if __name__ == '__main__':

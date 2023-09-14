@@ -16,9 +16,9 @@ def base_trainer(model, train_dataloader, optimizer, criterion, metric, device, 
         optimizer.step()
 
         train_epoch_loss += loss.item()
-        train_epoch_metric += metric(outputs, masks)
+        train_epoch_metric += metric(outputs, masks).item()
         
-    return {"train_loss": train_epoch_loss/len(train_dataloader), "train_metric": train_epoch_metric/len(train_dataloader)}
+    return {"train_loss": train_epoch_loss/len(train_dataloader)}, {"train_metric": train_epoch_metric/len(train_dataloader)}
 
 
 def validator(model, val_dataloaders, criterion, metric, device, *args, **kwargs):
@@ -29,7 +29,7 @@ def validator(model, val_dataloaders, criterion, metric, device, *args, **kwargs
         epoch_loss_val = 0
         epoch_metric_val = 0
         with torch.no_grad():
-            for i, (images, masks) in enumerate(tqdm(val_dataloader)):
+            for j, (images, masks) in enumerate(tqdm(val_dataloader)):
                 images = images.float().to(device)
                 masks = masks.long().to(device)
 
@@ -37,9 +37,9 @@ def validator(model, val_dataloaders, criterion, metric, device, *args, **kwargs
                 loss = criterion(outputs, masks.squeeze(1))
 
                 epoch_loss_val += loss.item()
-                epoch_metric_val += metric(outputs, masks)
+                epoch_metric_val += metric(outputs, masks).item()
 
-        val_loss_list[f"ds{i}"] = epoch_loss_val/len(val_dataloader)
-        val_metric_list[f"ds{i}"] = epoch_metric_val/len(val_dataloader)
+        val_loss_list[f"val_loss_{i}"] = epoch_loss_val/len(val_dataloader)
+        val_metric_list[f"val_metric_{i}"] = epoch_metric_val/len(val_dataloader)
         
         return val_loss_list, val_metric_list
