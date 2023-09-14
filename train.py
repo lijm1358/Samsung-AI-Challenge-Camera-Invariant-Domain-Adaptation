@@ -2,6 +2,7 @@ import models
 import datasets
 import os
 from datetime import datetime
+import math
 
 import torch
 from torch import nn
@@ -20,6 +21,9 @@ import wandb
 
 import segmentation_models_pytorch as smp
 
+from utils import make_expr_directory
+from runner import base_trainer, validator
+
 
 def mIoU(input, target):
     # input: (N, C, H, W) | target: (N, H, W)
@@ -36,121 +40,97 @@ def mIoU(input, target):
     
     return iou / C 
 
-def main(args):
-    curdate = datetime.now().strftime("%Y%m%d-%H-%M-%S")
-    if os.listdir("./experiments") == []:
-        expr_num = 1
-    else:
-        expr_num = int(sorted(os.listdir("./experiments"), key=lambda x: int(x[:3]))[-1][:3]) + 1
-    expr_save_path = os.path.join("./experiments", f"{expr_num:03d}-{curdate}-{args.wandb.run_name}")
-    os.makedirs(expr_save_path, exist_ok=True)
+def main(cfg):
+    expr_save_path = make_expr_directory(cfg.expr_save_path, cfg.wandb.run_name)
     
-    if args.wandb.use:
-        wandb.init(entity="lijm1358", project="fisheye_segmentation", name=args.wandb.run_name, config=args)
+    if cfg.wandb.use:
+        wandb.init(entity="lijm1358", project="fisheye_segmentation", name=cfg.wandb.run_name, config=cfg)
     
-    device = args.device
+    device = cfg.device
     
-    train_transform = getattr(datasets.augmentations, args.train_dataset.transform.type)(**args.train_dataset.transform.args)
-    # train validation dataset, dataloader
-    train_ds = getattr(datasets, args.train_dataset.type)(csv_file='./data/train_source.csv', transform=train_transform)
-    train_dataloader = DataLoader(train_ds, **args.train_dataset.args)
+    # train transform, dataset, dataloader
+    train_transform = getattr(datasets.augmentations, cfg.train_dataset.transform.type)(**cfg.train_dataset.transform.args)
+    train_ds = getattr(datasets, cfg.train_dataset.type)(csv_file=cfg.train_dataset.path, transform=train_transform, **cfg.train_dataset.args)
+    train_dataloader = DataLoader(train_ds, **cfg.train_dataset.loader_args)
     
+    # validation transform, dataset, dataloader(여러 개 지원)
     val_dataloaders = []
-    for val_ds in args.val_dataset:
+    for val_ds in cfg.val_dataset:
         val_transform = getattr(datasets.augmentations, val_ds.transform.type)(**val_ds.transform.args)
-        val_dataset = getattr(datasets, val_ds.type)(csv_file='./data/val_source.csv', transform=val_transform)
-        val_dataloaders.append(DataLoader(val_dataset, **val_ds.args))
+        val_dataset = getattr(datasets, val_ds.type)(csv_file=val_ds.path, transform=val_transform, **val_ds.args)
+        val_dataloaders.append(DataLoader(val_dataset, **val_ds.loader_args))
 
     print("train dataset length: ", len(train_ds))
-    print("val dataset length: ", len(val_ds))
+    print("val dataset length: ", {f"ds{i}": len(val_ds) for i, val_ds in enumerate(val_dataloaders)})
     
-    if args.model.lib == "smp":
-        print(getattr(smp, args.model.type))
-        model = getattr(smp, args.model.type)(**args.model.args).to(device)
+    # model 정의
+    if cfg.model.lib == "smp":
+        model = getattr(smp, cfg.model.type)(**cfg.model.args).to(device)
     else:
-        model = getattr(models, args.model.type)().to(device)
+        model = getattr(models, cfg.model.type)().to(device)
 
     # loss function과 optimizer 정의
     criterion = torch.nn.CrossEntropyLoss()
-    optimizer = getattr(torch.optim, args.optimizer.type)(model.parameters(), **args.optimizer.args)
+    optimizer = getattr(torch.optim, cfg.optimizer.type)(model.parameters(), **cfg.optimizer.args)
     
     cur_epoch = 0
     # model checkpoint load
-    if args.model.load_from is not None:
-        checkpoint = torch.load(args.model.load_from)
+    if cfg.model.load_from is not None:
+        checkpoint = torch.load(cfg.model.load_from)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         cur_epoch = checkpoint['epoch']
-        print("model loaded from: ", args.model.load_from)
         
-    best_val_metric = 0
-    patience = args.earlystop_patience
+    # early stopping
+    best_criterion_value = math.inf if cfg.earlystop.monitor == "val_loss" else 0
+    patience = cfg.earlystop.patience
     earlystop_counter = 0
+    
+    # 실험 정보 출력
+    print()
+    print("model: ", cfg.model.type, f"({cfg.model.lib})")
+    print("optimizer: ", cfg.optimizer.type)
+    print("train dataset: ", cfg.train_dataset.type, f"({cfg.train_dataset.transform.type})")
+    for i, val_ds in enumerate(cfg.val_dataset):
+        print(f"val dataset {i}: ", val_ds.type, f"({val_ds.transform.type})")
+    print("experiment name: ", cfg.wandb.run_name)
+    print("experiment save path: ", expr_save_path)
+    print()
 
-    # training loop
-    for epoch in range(cur_epoch, args.epochs):  # 20 에폭 동안 학습합니다.
+    # training
+    for epoch in range(cur_epoch, cfg.epochs):
         print("------------------------")
-        print(f"Epoch {epoch+1}/{args.epochs}")
+        print(f"Epoch {epoch+1}/{cfg.epochs}")
         print("------------------------")
         print('training')
-        model.train()
-        epoch_loss = 0
-        epoch_metric = 0
-        for i, (images, masks) in enumerate(tqdm(train_dataloader)):
-            images = images.float().to(device)
-            masks = masks.long().to(device)
-
-            optimizer.zero_grad()
-            outputs = model(images)
-            loss = criterion(outputs, masks.squeeze(1))
-            loss.backward()
-            optimizer.step()
-
-            epoch_loss += loss.item()
-            epoch_metric += mIoU(outputs, masks)
-
-        print(f'Epoch {epoch+1}, Loss: {epoch_loss/len(train_dataloader)}, mIoU: {epoch_metric/len(train_dataloader)}')
+        train_results = base_trainer(model, train_dataloader, optimizer, criterion, mIoU, device)
         
-        print("validation")
-        model.eval()
-        val_loss_list = []
-        val_metric_list = []
-        for val_dataloader in val_dataloaders:
-            epoch_loss_val = 0
-            epoch_metric_val = 0
-            with torch.no_grad():
-                for i, (images, masks) in enumerate(tqdm(val_dataloader)):
-                    images = images.float().to(device)
-                    masks = masks.long().to(device)
-
-                    outputs = model(images)
-                    loss = criterion(outputs, masks.squeeze(1))
-
-                    epoch_loss_val += loss.item()
-                    epoch_metric_val += mIoU(outputs, masks)
-
-            print(f'Epoch {epoch+1}, Loss: {epoch_loss_val/len(val_dataloader)}, mIoU: {epoch_metric_val/len(val_dataloader)}')
-            val_loss_list.append(epoch_loss_val/len(val_dataloader))
-            val_metric_list.append(epoch_metric_val/len(val_dataloader))
+        print("\nvalidation")
+        valid_loss_results, valid_metric_results = validator(model, val_dataloaders, criterion, mIoU, device)
         
-        wandb.log({
-            "train_loss": epoch_loss/len(train_dataloader),
-            "train_mIoU": epoch_metric/len(train_dataloader),
-            "val_loss_1": val_loss_list[0],
-            "val_mIoU_1": val_metric_list[0],
-            "val_loss_2": val_loss_list[1],
-            "val_mIoU_2": val_metric_list[1],
-        })
+        # wandb logging
+        wandb.log({**train_results, **valid_loss_results, **valid_metric_results})
         
+        # save model
         torch.save({
-            'epoch': epoch,
+            'epoch': epoch+1,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict()
         }, os.path.join(expr_save_path, f"{epoch+1:02d}.pt"))
         
-        if best_val_metric < epoch_metric_val/len(val_dataloader):
-            print(f"validation metric improved from {best_val_metric:.4f} to {epoch_metric_val/len(val_dataloader):.4f}")
-            best_val_metric = epoch_metric_val/len(val_dataloader)
+        # early stopping
+        valid_comparison_value = valid_loss_results.values()[0] if cfg.earlystop.monitor == "val_loss" else valid_metric_results.values()[0]
+        
+        if cfg.earlystop.monitor == "val_loss":
+            _best_criterion_value = -best_criterion_value
+            _valid_comparison_value = -valid_comparison_value
+        else:
+            _best_criterion_value = best_criterion_value
+            _valid_comparison_value = valid_comparison_value
+        
+        if _best_criterion_value < _valid_comparison_value:
+            print(f"validation metric improved from {best_criterion_value:.4f} to {valid_comparison_value:.4f}")
+            valid_metric_results = valid_comparison_value
             earlystop_counter = 0
             torch.save({
                 'epoch': epoch,
@@ -166,6 +146,6 @@ def main(args):
 
 if __name__ == '__main__':
     with open("./config.yaml") as f:
-        args = yaml.safe_load(f)
-    args = EasyDict(args)
-    main(args)
+        cfg = yaml.safe_load(f)
+    cfg = EasyDict(cfg)
+    main(cfg)

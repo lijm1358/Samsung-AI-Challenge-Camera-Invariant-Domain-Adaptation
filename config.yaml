@@ -1,8 +1,11 @@
 device: cuda:0
 epochs: 100
-earlystop_patience: 10
+expr_save_path: ./experiments2
+earlystop: 
+  patience: 10
+  monitor: val_loss # val_loss(default), val_metric
 model:
-  lib: smp
+  lib: smp # torch(base), smp
   args: 
     encoder_name: resnet34
     encoder_weights: imagenet
@@ -15,46 +18,33 @@ optimizer:
     lr: 0.001
   type: Adam
 train_dataset:
+  path: ./data/train_source.csv
   args:
+    infer: False
+  transform: 
+    type: BaseAugmentation
+    args:
+      resize: 224
+      p: 0.5
+  loader_args:
     batch_size: 4
     shuffle: True
     num_workers: 0
-  transform: 
-    type: FisheyeAugmentation
-    args:
-      resize: 224
-      focal_ratio: 0.125
-      center_x_ratio: 0.5
-      center_y_ratio: 0.5
-      p: 0.5
-  loader_args: null
   type: FisheyeDataset
 val_dataset:
-- args:
-    batch_size: 2
-    shuffle: False
-    num_workers: 0
+- path: ./data/val_source.csv
+  args:
+    infer: False
   transform: 
     type: BaseAugmentation
     args:
       resize: 224
       p: 1.0
-  loader_args: null
-  type: FisheyeDataset
-- args:
+  loader_args:
     batch_size: 2
     shuffle: False
     num_workers: 0
-  transform: 
-    type: FisheyeAugmentation
-    args:
-      resize: 224
-      focal_ratio: 0.125
-      center_x_ratio: 0.5
-      center_y_ratio: 0.5
-      p: 1.0
-  loader_args: null
   type: FisheyeDataset
 wandb:
-  run_name: smptest
-  use: true
+  run_name: test_baseline
+  use: True
