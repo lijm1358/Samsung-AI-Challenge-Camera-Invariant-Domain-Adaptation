@@ -1,5 +1,6 @@
-from tqdm import tqdm
 import torch
+from tqdm import tqdm
+
 
 def base_trainer(model, train_dataloader, optimizer, criterion, metric, device, *args, **kwargs):
     model.train()
@@ -17,8 +18,11 @@ def base_trainer(model, train_dataloader, optimizer, criterion, metric, device, 
 
         train_epoch_loss += loss.item()
         train_epoch_metric += metric(outputs, masks).item()
-        
-    return {"train_loss": train_epoch_loss/len(train_dataloader)}, {"train_metric": train_epoch_metric/len(train_dataloader)}
+
+    return (
+        {"train_loss": train_epoch_loss / len(train_dataloader)},
+        {"train_metric": train_epoch_metric / len(train_dataloader)},
+    )
 
 
 def validator(model, val_dataloaders, criterion, metric, device, *args, **kwargs):
@@ -39,7 +43,7 @@ def validator(model, val_dataloaders, criterion, metric, device, *args, **kwargs
                 epoch_loss_val += loss.item()
                 epoch_metric_val += metric(outputs, masks).item()
 
-        val_loss_list[f"val_loss_{i}"] = epoch_loss_val/len(val_dataloader)
-        val_metric_list[f"val_metric_{i}"] = epoch_metric_val/len(val_dataloader)
-        
+        val_loss_list[f"val_loss_{i}"] = epoch_loss_val / len(val_dataloader)
+        val_metric_list[f"val_metric_{i}"] = epoch_metric_val / len(val_dataloader)
+
         return val_loss_list, val_metric_list
