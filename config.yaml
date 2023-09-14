@@ -41,7 +41,7 @@ train_dataset:
   transform: 
     type: BaseAugmentation
     args:
-      resize: 224
+      resize: (224, 224)
       p: 0.5
   loader_args:
     batch_size: 4

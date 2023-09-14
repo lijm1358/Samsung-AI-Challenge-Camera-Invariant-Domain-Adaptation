@@ -7,10 +7,15 @@ from albumentations.pytorch import ToTensorV2
 
 
 class BaseAugmentation:
-    def __init__(self, resize=224, p=0.5):
+    def __init__(self, resize=(224, 224), p=0.5):
         super(BaseAugmentation, self).__init__()
+        
+        if isinstance(resize, str):
+            resize = eval(resize)
+        elif isinstance(resize, int):
+            resize = (resize, resize)
 
-        self.transform = A.Compose([A.Resize(resize, resize), A.Normalize(), ToTensorV2()])
+        self.transform = A.Compose([A.Resize(*resize), A.Normalize(), ToTensorV2()])
 
     def __call__(self, image, mask=None):
         if mask is None:
@@ -22,13 +27,18 @@ class BaseAugmentation:
 
 
 class FisheyeAugmentation:
-    def __init__(self, resize=224, focal_ratio=0.25, center_x_ratio=0.5, center_y_ratio=0.5, p=0.5):
+    def __init__(self, resize=(224, 224), focal_ratio=0.25, center_x_ratio=0.5, center_y_ratio=0.5, p=0.5):
         self.focal = focal_ratio
         self.center_x = center_x_ratio
         self.center_y = center_y_ratio
         self.p = p
+        
+        if isinstance(resize, str):
+            resize = eval(resize)
+        elif isinstance(resize, int):
+            resize = (resize, resize)
 
-        self.transform = A.Compose([A.Resize(resize, resize), A.Normalize(), ToTensorV2()])
+        self.transform = A.Compose([A.Resize(*resize), A.Normalize(), ToTensorV2()])
 
     def apply_fisheye(self, image, is_mask=False):
         # 이미지 크기 가져오기
