@@ -5,6 +5,7 @@ earlystop:
   patience: 10
   monitor: val_loss # val_loss(default), val_metric
 model:
+  type: Unet
   lib: smp # torch(base), smp
   args: 
     encoder_name: resnet34
@@ -12,12 +13,12 @@ model:
     in_channels: 3
     classes: 13
   load_from: null
-  type: Unet
 optimizer:
+  type: Adam
   args:
     lr: 0.001
-  type: Adam
 train_dataset:
+  type: FisheyeDataset
   path: ./data/train_source.csv
   args:
     infer: False
@@ -30,9 +31,9 @@ train_dataset:
     batch_size: 4
     shuffle: True
     num_workers: 0
-  type: FisheyeDataset
 val_dataset:
-- path: ./data/val_source.csv
+- type: FisheyeDataset
+  path: ./data/val_source.csv
   args:
     infer: False
   transform: 
@@ -44,7 +45,6 @@ val_dataset:
     batch_size: 2
     shuffle: False
     num_workers: 0
-  type: FisheyeDataset
 wandb:
   run_name: test_baseline
   use: True
