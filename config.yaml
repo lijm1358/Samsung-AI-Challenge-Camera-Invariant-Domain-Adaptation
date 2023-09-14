@@ -1,9 +1,15 @@
+# experiment setup
 device: cuda:0
 epochs: 100
 expr_save_path: ./experiments2
 earlystop: 
   patience: 10
   monitor: val_loss # val_loss(default), val_metric
+wandb:
+  run_name: test_baseline
+  use: True
+
+# model
 model:
   type: Unet
   lib: smp # torch(base), smp
@@ -13,10 +19,19 @@ model:
     in_channels: 3
     classes: 13
   load_from: null
+
+# optimizer
 optimizer:
   type: Adam
   args:
     lr: 0.001
+
+# runner
+runner:
+  train: base_trainer
+  val: validator 
+
+# dataset
 train_dataset:
   type: FisheyeDataset
   path: ./data/train_source.csv
@@ -45,6 +60,3 @@ val_dataset:
     batch_size: 2
     shuffle: False
     num_workers: 0
-wandb:
-  run_name: test_baseline
-  use: True
