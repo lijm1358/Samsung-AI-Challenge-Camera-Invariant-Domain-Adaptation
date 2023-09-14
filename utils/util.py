@@ -1,5 +1,8 @@
 from datetime import datetime
+import torch
+import numpy as np
 import os
+import random
 
 def make_expr_directory(save_path: str, expr_name: str) -> str:
     if not os.path.exists(save_path):
@@ -17,3 +20,12 @@ def make_expr_directory(save_path: str, expr_name: str) -> str:
     os.makedirs(expr_save_path, exist_ok=True)
     
     return expr_save_path
+
+def set_seed(seed):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)  # if use multi-GPU
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    np.random.seed(seed)
+    random.seed(seed)

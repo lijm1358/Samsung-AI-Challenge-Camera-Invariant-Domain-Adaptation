@@ -8,6 +8,7 @@ earlystop:
 wandb:
   run_name: test_baseline
   use: True
+seed: 42
 
 # model
 model:

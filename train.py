@@ -21,7 +21,7 @@ import wandb
 
 import segmentation_models_pytorch as smp
 
-from utils import make_expr_directory
+from utils import make_expr_directory, set_seed
 import runner
 
 
