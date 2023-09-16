@@ -75,7 +75,7 @@ def main(cfg):
     if cfg.model.lib == "smp":
         model = getattr(smp, cfg.model.type)(**cfg.model.args).to(device)
     else:
-        model = getattr(models, cfg.model.type)().to(device)
+        model = getattr(models, cfg.model.type)(**cfg.model.args).to(device)
 
     # loss function과 optimizer 정의
     criterion = torch.nn.CrossEntropyLoss()
