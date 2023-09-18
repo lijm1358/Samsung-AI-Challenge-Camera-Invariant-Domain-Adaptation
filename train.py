@@ -27,8 +27,8 @@ def mIoU(input, target):
     input = input.argmax(dim=1)  # (N, H, W)
     iou = 0
     for cls in range(C):
-        pred = input == cls
-        true = target == cls
+        pred = (input == cls).long()
+        true = (target == cls).long()
         inter = (pred & true).sum()
         union = (pred | true).sum()
         iou += inter / (union + 1e-8)
@@ -65,6 +65,11 @@ def main(cfg):
             csv_file=val_ds.path, transform=val_transform, **val_ds.args
         )
         val_dataloaders.append(DataLoader(val_dataset, **val_ds.loader_args))
+        
+    # train_target transform, dataset, dataloader
+    target_transform = datasets.augmentations.BaseAugmentation(**cfg.train_dataset.transform.args)
+    target_ds = datasets.FisheyeDataset(csv_file="./data/train_target.csv", transform=target_transform, infer=True)
+    target_dataloader = DataLoader(target_ds, **cfg.train_dataset.loader_args)
 
     print("train dataset length: ", len(train_ds))
     print(
@@ -73,20 +78,31 @@ def main(cfg):
 
     # model 정의
     if cfg.model.lib == "smp":
-        model = getattr(smp, cfg.model.type)(**cfg.model.args).to(device)
+        model_seg = getattr(smp, cfg.model.type)(**cfg.model.args).to(device)
     else:
-        model = getattr(models, cfg.model.type)(**cfg.model.args).to(device)
+        model_seg = getattr(models, cfg.model.type)(**cfg.model.args).to(device)
+        
+    model_D1 = models.FCDiscriminator(13)
+    model_D2 = models.FCDiscriminator(13)
+    
+    model_D1.train()
+    model_D2.train()
+    
+    model_D1.to(device)
+    model_D2.to(device)
 
     # loss function과 optimizer 정의
     criterion = torch.nn.CrossEntropyLoss()
-    optimizer = getattr(torch.optim, cfg.optimizer.type)(model.parameters(), **cfg.optimizer.args)
+    optimizer_seg = getattr(torch.optim, cfg.optimizer.type)(model_seg.parameters(), **cfg.optimizer.args)
+    optimizer_d1 = torch.optim.Adam(model_D1.parameters(), lr=1e-4, betas=(0.9, 0.99))
+    optimizer_d2 = torch.optim.Adam(model_D2.parameters(), lr=1e-4, betas=(0.9, 0.99))
 
     cur_epoch = 0
     # model checkpoint load
     if cfg.model.load_from is not None:
         checkpoint = torch.load(cfg.model.load_from)
-        model.load_state_dict(checkpoint["model_state_dict"])
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        model_seg.load_state_dict(checkpoint["model_state_dict"])
+        optimizer_seg.load_state_dict(checkpoint["optimizer_state_dict"])
         cur_epoch = checkpoint["epoch"]
 
     # early stopping
@@ -115,40 +131,45 @@ def main(cfg):
         print(f"Epoch {epoch+1}/{cfg.epochs}")
         print("------------------------")
         print("training")
-        train_loss_results, train_metric_results = train_runner(
-            model, train_dataloader, optimizer, criterion, mIoU, device
+        # train_loss_results, train_metric_results = train_runner(
+        #     model, train_dataloader, optimizer, criterion, mIoU, device
+        # )
+        train_results = train_runner(
+            model_seg, model_D1, model_D2, train_dataloader, target_dataloader, optimizer_seg, optimizer_d1, optimizer_d2, criterion, mIoU, device
         )
 
         print("\nvalidation")
         valid_loss_results, valid_metric_results = val_runner(
-            model, val_dataloaders, criterion, mIoU, device
+            model_seg, val_dataloaders, criterion, mIoU, device
         )
 
         # wandb logging
         wandb.log(
             {
-                **train_loss_results,
-                **train_metric_results,
+                **train_results,
                 **valid_loss_results,
-                **valid_metric_results,
+                **valid_metric_results
             }
         )
         print(
             f"Epoch {epoch+1} - ",
             {
-                **train_loss_results,
-                **train_metric_results,
+                **train_results,
                 **valid_loss_results,
-                **valid_metric_results,
-            },
+                **valid_metric_results
+            }
         )
 
         # save model
         torch.save(
             {
                 "epoch": epoch + 1,
-                "model_state_dict": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
+                "model_state_dict_seg": model_seg.state_dict(),
+                "model_state_dict_d1": model_D1.state_dict(),
+                "model_state_dict_d2": model_D2.state_dict(),
+                "optimizer_state_dict_seg": optimizer_seg.state_dict(),
+                "optimizer_state_dict_d1": optimizer_d1.state_dict(),
+                "optimizer_state_dict_d2": optimizer_d2.state_dict()
             },
             os.path.join(expr_save_path, f"{epoch+1:02d}.pt"),
         )
@@ -175,9 +196,13 @@ def main(cfg):
             earlystop_counter = 0
             torch.save(
                 {
-                    "epoch": epoch,
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
+                    "epoch": epoch + 1,
+                    "model_state_dict_seg": model_seg.state_dict(),
+                    "model_state_dict_d1": model_D1.state_dict(),
+                    "model_state_dict_d2": model_D2.state_dict(),
+                    "optimizer_state_dict_seg": optimizer_seg.state_dict(),
+                    "optimizer_state_dict_d1": optimizer_d1.state_dict(),
+                    "optimizer_state_dict_d2": optimizer_d2.state_dict()
                 },
                 os.path.join(expr_save_path, "best.pt"),
             )

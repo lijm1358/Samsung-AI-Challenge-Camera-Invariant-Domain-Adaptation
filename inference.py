@@ -1,13 +1,15 @@
 import numpy as np
 import pandas as pd
+import segmentation_models_pytorch as smp
 import torch
+from torch import nn
 from PIL import Image
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from datasets import FisheyeDataset
 from datasets.augmentations import BaseAugmentation
-from models import UNet
+from models import UNet, DeeplabMulti
 
 
 def rle_encode(mask):
@@ -19,23 +21,32 @@ def rle_encode(mask):
 
 
 def main():
-    transform = BaseAugmentation()
+    transform = BaseAugmentation(resize=(448, 448))
     test_dataset = FisheyeDataset(csv_file="./data/test.csv", transform=transform, infer=True)
     test_dataloader = DataLoader(test_dataset, batch_size=4, shuffle=False, num_workers=1)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    model = UNet()
-    ckpt = torch.load("./best.pt")
-    model.load_state_dict(ckpt["model_state_dict"])
+    # model = UNet()
+    model = DeeplabMulti(num_classes=13, multi=True)
+    # model = smp.DeepLabV3(
+    #     encoder_name="resnet101",
+    #     encoder_weights="imagenet",
+    #     in_channels=3,
+    #     classes=13
+    # )
+    ckpt = torch.load("./experiments/020_20230917_012553_adaptseg/07.pt")
+    model.load_state_dict(ckpt["model_state_dict_seg"])
     model.to(device)
+    interp = nn.Upsample(size=(448, 448), mode='bilinear', align_corners=True)
 
     with torch.no_grad():
         model.eval()
         result = []
         for images in tqdm(test_dataloader):
             images = images.float().to(device)
-            outputs = model(images)
+            _, outputs = model(images)
+            outputs = interp(outputs)
             outputs = torch.softmax(outputs, dim=1).cpu()
             outputs = torch.argmax(outputs, dim=1).numpy()
             # batch에 존재하는 각 이미지에 대해서 반복
@@ -55,7 +66,7 @@ def main():
 
     submit = pd.read_csv("./data/sample_submission.csv")
     submit["mask_rle"] = result
-    submit.to_csv("./fisheyeaug_submit.csv", index=False)
+    submit.to_csv("./adaptseg.csv", index=False)
 
 
 if __name__ == "__main__":
