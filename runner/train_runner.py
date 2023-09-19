@@ -1,8 +1,11 @@
 import torch
+from torch import nn
 from tqdm import tqdm
 
 
+
 def base_trainer(model, train_dataloader, optimizer, criterion, metric, device, *args, **kwargs):
+    upsample = nn.Upsample((448, 448), mode="bilinear")
     model.train()
     train_epoch_loss = 0
     train_epoch_metric = 0
@@ -11,7 +14,11 @@ def base_trainer(model, train_dataloader, optimizer, criterion, metric, device, 
         masks = masks.long().to(device)
 
         optimizer.zero_grad()
-        outputs = model(images)
+        if model.__class__.__name__ is in ["ResNetMulti", "ResNetMultiPretrained"]:
+            _, outputs = model(images)
+            outputs = upsample(outputs)
+        else:
+            outputs = model(images)
         loss = criterion(outputs, masks.squeeze(1))
         loss.backward()
         optimizer.step()
@@ -26,6 +33,7 @@ def base_trainer(model, train_dataloader, optimizer, criterion, metric, device, 
 
 
 def validator(model, val_dataloaders, criterion, metric, device, *args, **kwargs):
+    upsample = nn.Upsample((448, 448), mode="bilinear")
     model.eval()
     val_loss_list = {}
     val_metric_list = {}
@@ -37,7 +45,11 @@ def validator(model, val_dataloaders, criterion, metric, device, *args, **kwargs
                 images = images.float().to(device)
                 masks = masks.long().to(device)
 
-                outputs = model(images)
+                if model.__class__.__name__ is in ["ResNetMulti", "ResNetMultiPretrained"]:
+                    _, outputs = model(images)
+                    outputs = upsample(outputs)
+                else:
+                    outputs = model(images)
                 loss = criterion(outputs, masks.squeeze(1))
 
                 epoch_loss_val += loss.item()
@@ -47,3 +59,4 @@ def validator(model, val_dataloaders, criterion, metric, device, *args, **kwargs
         val_metric_list[f"val_metric_{i}"] = epoch_metric_val / len(val_dataloader)
 
         return val_loss_list, val_metric_list
+        
