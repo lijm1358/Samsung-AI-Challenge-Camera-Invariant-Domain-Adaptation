@@ -2,6 +2,7 @@ import torch.nn as nn
 import math
 import torch.utils.model_zoo as model_zoo
 import torch
+from torchvision.models import resnet101
 import numpy as np
 
 affine_par = True
@@ -119,9 +120,8 @@ class Classifier_Module(nn.Module):
 
 
 class ResNetMulti(nn.Module):
-    def __init__(self, block, layers, num_classes, multi):
+    def __init__(self, block, layers, num_classes):
         self.inplanes = 64
-        self.multi = multi
         super(ResNetMulti, self).__init__()
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3,
                                bias=False)
@@ -136,8 +136,6 @@ class ResNetMulti(nn.Module):
         self.layer4 = self._make_layer(block, 512, layers[3], stride=1, dilation=4)
         self.layer5 = self._make_pred_layer(Classifier_Module, 1024, [6, 12, 18, 24], [6, 12, 18, 24], num_classes)
         self.layer6 = self._make_pred_layer(Classifier_Module, 2048, [6, 12, 18, 24], [6, 12, 18, 24], num_classes)
-        
-        self.upsample = nn.Upsample(size=(448, 448), mode='bilinear', align_corners=True)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -183,10 +181,7 @@ class ResNetMulti(nn.Module):
         x2 = self.layer4(x)
         x2 = self.layer6(x2)
 
-        if self.multi:
-            return x1, x2
-        else:
-            return self.upsample(x2)
+        return x1, x2
 
     def get_1x_lr_params_NOscale(self):
         """
@@ -228,8 +223,79 @@ class ResNetMulti(nn.Module):
     def optim_parameters(self, args):
         return [{'params': self.get_1x_lr_params_NOscale(), 'lr': args.learning_rate},
                 {'params': self.get_10x_lr_params(), 'lr': 10 * args.learning_rate}]
+        
+class ResNetMultiPretrained(nn.Module):
+    def __init__(self, block, layers, num_classes):
+        self.inplanes = 64
+        super(ResNetMultiPretrained, self).__init__()
+        self.backbone = resnet101(pretrained=True)
+        self.conv1 = self.backbone.conv1
+        self.bn1 = self.backbone.bn1
+        for i in self.bn1.parameters():
+            i.requires_grad = False
+        self.relu = self.backbone.relu
+        self.maxpool = self.backbone.maxpool
+        self.layer1 = self.backbone.layer1
+        self.layer2 = self.backbone.layer2
+        self.layer3 = self.backbone.layer3
+        self.layer4 = self.backbone.layer4
+        
+        self.layer3[0].downsample[0] = nn.Conv2d(512, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False)
+        self.layer4[0].downsample[0] = nn.Conv2d(1024, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False)
+        
+        self.layer3[0].downsample[0].weight.data.normal_(0, 0.01)
+        self.layer4[0].downsample[0].weight.data.normal_(0, 0.01)
+        
+        for bottleneck in self.layer3:
+            bottleneck.conv2 = nn.Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(2, 2), dilation=(2, 2), bias=False)
+            bottleneck.conv2.weight.data.normal_(0, 0.01)
+        for bottleneck in self.layer4:
+            bottleneck.conv2 = nn.Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(4, 4), dilation=(4, 4), bias=False)
+            bottleneck.conv2.weight.data.normal_(0, 0.01)
+        
+        self.layer5 = self._make_pred_layer(Classifier_Module, 1024, [6, 12, 18, 24], [6, 12, 18, 24], num_classes)
+        self.layer6 = self._make_pred_layer(Classifier_Module, 2048, [6, 12, 18, 24], [6, 12, 18, 24], num_classes)
+
+        for m in self.layer5.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, 0.01)
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+        for m in self.layer6.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, 0.01)
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+                #        for i in m.parameters():
+                #            i.requires_grad = False
+
+    def _make_pred_layer(self, block, inplanes, dilation_series, padding_series, num_classes):
+        return block(inplanes, dilation_series, padding_series, num_classes)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+        x = self.layer1(x)
+        x = self.layer2(x)
+
+        x = self.layer3(x)
+        x1 = self.layer5(x)
+
+        x2 = self.layer4(x)
+        x2 = self.layer6(x2)
+
+        return x1, x2
 
 
-def DeeplabMulti(num_classes=21, multi=True):
-    model = ResNetMulti(Bottleneck, [3, 4, 23, 3], num_classes, multi)
+def DeeplabMulti(num_classes=21, pretrained=False):
+    if pretrained:
+        model = ResNetMultiPretrained(Bottleneck, [3, 4, 23, 3], num_classes)
+    else:
+        model = ResNetMulti(Bottleneck, [3, 4, 23, 3], num_classes)
     return model
