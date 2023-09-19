@@ -1,31 +1,29 @@
 # experiment setup
 device: cuda:0
 epochs: 100
-expr_save_path: ./experiments2
+expr_save_path: ./experiments
 earlystop: 
   patience: 10
-  monitor: val_loss # val_loss(default), val_metric
+  monitor: val_metric # val_loss(default), val_metric
 wandb:
-  run_name: test_baseline
+  run_name: customdeeplabv2_pretrained_contd
   use: True
 seed: 42
 
 # model
 model:
-  type: Unet
-  lib: smp # torch(base), smp
+  type: DeeplabMulti
+  lib: torch # torch(base), smp
   args: 
-    encoder_name: resnet34
-    encoder_weights: imagenet
-    in_channels: 3
-    classes: 13
-  load_from: null
+    num_classes: 13
+    pretrained: True
+  load_from: ./experiments/022_20230918_084033_customdeeplabv2_pretrained/23.pt
 
 # optimizer
 optimizer:
   type: Adam
   args:
-    lr: 0.001
+    lr: 0.0002
 
 # runner
 runner:
@@ -41,12 +39,12 @@ train_dataset:
   transform: 
     type: BaseAugmentation
     args:
-      resize: (224, 224)
-      p: 0.5
+      resize: (448, 448)
+      p: 1.0
   loader_args:
     batch_size: 4
     shuffle: True
-    num_workers: 0
+    num_workers: 4
 val_dataset:
 - type: FisheyeDataset
   path: ./data/val_source.csv
@@ -55,9 +53,9 @@ val_dataset:
   transform: 
     type: BaseAugmentation
     args:
-      resize: 224
+      resize: (448, 448)
       p: 1.0
   loader_args:
-    batch_size: 2
+    batch_size: 4
     shuffle: False
     num_workers: 0
