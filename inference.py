@@ -2,12 +2,17 @@ import numpy as np
 import pandas as pd
 import torch
 from PIL import Image
+from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from datasets import FisheyeDataset
 from datasets.augmentations import BaseAugmentation
 from models import UNet
+import models
+import segmentation_models_pytorch as smp
+from easydict import EasyDict
+import yaml
 
 
 def rle_encode(mask):
@@ -19,23 +24,32 @@ def rle_encode(mask):
 
 
 def main():
-    transform = BaseAugmentation()
+    with open("./config.yaml") as f:
+        cfg = yaml.safe_load(f)
+    cfg = EasyDict(cfg)
+    
+    transform = BaseAugmentation(resize=cfg.train_dataset.transform.args.resize)
     test_dataset = FisheyeDataset(csv_file="./data/test.csv", transform=transform, infer=True)
     test_dataloader = DataLoader(test_dataset, batch_size=4, shuffle=False, num_workers=1)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    model = UNet()
-    ckpt = torch.load("./best.pt")
+    if cfg.model.lib == "smp":
+        model = getattr(smp, cfg.model.type)(**cfg.model.args).to(device)
+    else:
+        model = getattr(models, cfg.model.type)(**cfg.model.args).to(device)
+    ckpt = torch.load("./experiments/023_20230918_132421_customdeeplabv2_pretrained_contd/best.pt")
     model.load_state_dict(ckpt["model_state_dict"])
     model.to(device)
 
+    upsample = nn.Upsample((448, 448), mode="bilinear")
     with torch.no_grad():
         model.eval()
         result = []
         for images in tqdm(test_dataloader):
             images = images.float().to(device)
-            outputs = model(images)
+            _, outputs = model(images)
+            outputs = upsample(outputs)
             outputs = torch.softmax(outputs, dim=1).cpu()
             outputs = torch.argmax(outputs, dim=1).numpy()
             # batch에 존재하는 각 이미지에 대해서 반복
@@ -55,7 +69,7 @@ def main():
 
     submit = pd.read_csv("./data/sample_submission.csv")
     submit["mask_rle"] = result
-    submit.to_csv("./fisheyeaug_submit.csv", index=False)
+    submit.to_csv("./customdeeplabv2_pretrained.csv", index=False)
 
 
 if __name__ == "__main__":
