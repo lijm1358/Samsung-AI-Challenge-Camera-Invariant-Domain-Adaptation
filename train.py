@@ -101,8 +101,12 @@ def main(cfg):
     # model checkpoint load
     if cfg.model.load_from is not None:
         checkpoint = torch.load(cfg.model.load_from)
-        model_seg.load_state_dict(checkpoint["model_state_dict"])
-        optimizer_seg.load_state_dict(checkpoint["optimizer_state_dict"])
+        model_seg.load_state_dict(checkpoint["model_state_dict_seg"])
+        model_D1.load_state_dict(checkpoint["model_state_dict_d1"])
+        model_D2.load_state_dict(checkpoint["model_state_dict_d2"])
+        optimizer_seg.load_state_dict(checkpoint["optimizer_state_dict_seg"])
+        optimizer_d1.load_state_dict(checkpoint["optimizer_state_dict_d1"])
+        optimizer_d2.load_state_dict(checkpoint["optimizer_state_dict_d2"])
         cur_epoch = checkpoint["epoch"]
 
     # early stopping

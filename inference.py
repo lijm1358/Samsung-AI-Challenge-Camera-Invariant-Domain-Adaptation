@@ -10,7 +10,9 @@ from tqdm import tqdm
 from datasets import FisheyeDataset
 from datasets.augmentations import BaseAugmentation
 from models import UNet, DeeplabMulti
-
+import yaml
+from easydict import EasyDict
+import models
 
 def rle_encode(mask):
     pixels = mask.flatten()
@@ -21,21 +23,25 @@ def rle_encode(mask):
 
 
 def main():
+    with open("./config.yaml") as f:
+        cfg = yaml.safe_load(f)
+    cfg = EasyDict(cfg)
+    
     transform = BaseAugmentation(resize=(448, 448))
     test_dataset = FisheyeDataset(csv_file="./data/test.csv", transform=transform, infer=True)
     test_dataloader = DataLoader(test_dataset, batch_size=4, shuffle=False, num_workers=1)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # model = UNet()
-    model = DeeplabMulti(num_classes=13, multi=True)
-    # model = smp.DeepLabV3(
-    #     encoder_name="resnet101",
-    #     encoder_weights="imagenet",
-    #     in_channels=3,
-    #     classes=13
-    # )
-    ckpt = torch.load("./experiments/020_20230917_012553_adaptseg/07.pt")
+    if cfg.model.lib == "smp":
+        model = getattr(smp, cfg.model.type)(**cfg.model.args).to(device)
+    else:
+        model = getattr(models, cfg.model.type)(**cfg.model.args).to(device)
+    # ckpt = torch.load("./experiments/023_20230918_132421_customdeeplabv2_pretrained_contd/best.pt")
+    # model.load_state_dict(ckpt["model_state_dict"])
+    # model.to(device)
+    
+    ckpt = torch.load("./experiments/027_20230919_143531_adaptseg_pretrained/best.pt")
     model.load_state_dict(ckpt["model_state_dict_seg"])
     model.to(device)
     interp = nn.Upsample(size=(448, 448), mode='bilinear', align_corners=True)
@@ -66,7 +72,7 @@ def main():
 
     submit = pd.read_csv("./data/sample_submission.csv")
     submit["mask_rle"] = result
-    submit.to_csv("./adaptseg.csv", index=False)
+    submit.to_csv("./adaptseg_pretrained.csv", index=False)
 
 
 if __name__ == "__main__":

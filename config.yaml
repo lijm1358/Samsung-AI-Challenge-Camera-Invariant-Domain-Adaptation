@@ -6,8 +6,8 @@ earlystop:
   patience: 10
   monitor: val_loss # val_loss(default), val_metric
 wandb:
-  run_name: adaptseg_test
-  use: False
+  run_name: adaptseg_pretrained
+  use: True
 seed: 42
 
 # model
@@ -16,12 +16,8 @@ model:
   lib: torch # torch(base), smp
   args: 
     num_classes: 13
-    multi: True
-    # encoder_name: resnet101
-    # encoder_weights: imagenet
-    # in_channels: 3
-    # classes: 13
-  load_from: null
+    pretrained: True
+  load_from: ./experiments/024_20230919_075413_adaptseg_pretrained/12.pt
 
 # optimizer
 optimizer:
