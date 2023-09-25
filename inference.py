@@ -38,17 +38,17 @@ def main():
         model = getattr(smp, cfg.model.type)(**cfg.model.args).to(device)
     else:
         model = getattr(models, cfg.model.type)(**cfg.model.args).to(device)
-    ckpt = torch.load("./experiments/023_20230918_132421_customdeeplabv2_pretrained_contd/best.pt")
+    ckpt = torch.load("./experiments/042_20230925_115651_segformer_finetune/best.pt")
     model.load_state_dict(ckpt["model_state_dict"])
     model.to(device)
 
-    upsample = nn.Upsample((448, 448), mode="bilinear")
+    upsample = nn.Upsample((540, 960), mode="bilinear")
     with torch.no_grad():
         model.eval()
         result = []
         for images in tqdm(test_dataloader):
             images = images.float().to(device)
-            _, outputs = model(images)
+            outputs = model(images)
             outputs = upsample(outputs)
             outputs = torch.softmax(outputs, dim=1).cpu()
             outputs = torch.argmax(outputs, dim=1).numpy()
@@ -69,7 +69,7 @@ def main():
 
     submit = pd.read_csv("./data/sample_submission.csv")
     submit["mask_rle"] = result
-    submit.to_csv("./customdeeplabv2_pretrained.csv", index=False)
+    submit.to_csv("./segformer_pretrained.csv", index=False)
 
 
 if __name__ == "__main__":
