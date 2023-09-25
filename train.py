@@ -67,7 +67,7 @@ def main(cfg):
         val_dataloaders.append(DataLoader(val_dataset, **val_ds.loader_args))
         
     # train_target transform, dataset, dataloader
-    target_transform = datasets.augmentations.BaseAugmentation(**cfg.train_dataset.transform.args)
+    target_transform = datasets.augmentations.BaseAugmentation(resize=cfg.train_dataset.transform.args.resize)
     target_ds = datasets.FisheyeDataset(csv_file="./data/train_target.csv", transform=target_transform, infer=True)
     target_dataloader = DataLoader(target_ds, **cfg.train_dataset.loader_args)
 
