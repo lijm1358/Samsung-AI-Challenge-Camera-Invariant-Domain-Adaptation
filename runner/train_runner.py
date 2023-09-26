@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from torch.cuda import amp
 from tqdm import tqdm
 
 
@@ -41,18 +42,24 @@ def segformer_trainer(model, train_dataloader, optimizer, criterion, metric, dev
         masks = masks.long().to(device)
 
         optimizer.zero_grad()
-        loss, logits = model(images, masks)
-        loss.backward()
-        optimizer.step()
+        
+        if "scaler" in kwargs:
+            scaler = kwargs["scaler"]
+            with torch.autocast(device_type='cuda', dtype=torch.float16):
+                loss, logits = model(images, masks)
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+        else:
+            loss, logits = model(images, masks)
+            loss.backward()
+            optimizer.step()
         
         outputs = nn.functional.interpolate(logits, size=masks.shape[-2:], mode="bilinear", align_corners=False)
         # outputs = upsampled_logits.argmax(dim=1)
     
         train_epoch_loss += loss.item()
         train_epoch_metric += metric(outputs, masks).item()
-        
-        if i==5:
-            break
 
     return (
         {"train_loss": train_epoch_loss / len(train_dataloader)},

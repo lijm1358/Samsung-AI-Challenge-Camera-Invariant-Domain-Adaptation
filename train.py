@@ -10,6 +10,7 @@ import yaml
 from albumentations.pytorch import ToTensorV2
 from easydict import EasyDict
 from torch import nn
+from torch.cuda import amp
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
@@ -23,7 +24,7 @@ from utils import make_expr_directory, set_seed
 def mIoU(input, target):
     # input: (N, C, H, W) | target: (N, H, W)
     N, C, H, W = input.shape
-    input = torch.sigmoid(input)
+    # input = torch.sigmoid(input)
     input = input.argmax(dim=1)  # (N, H, W)
     iou = 0
     for cls in range(C):
@@ -88,6 +89,10 @@ def main(cfg):
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         cur_epoch = checkpoint["epoch"]
+        
+    # amp
+    if cfg.amp:
+        scaler = amp.GradScaler()
 
     # early stopping
     best_criterion_value = math.inf if cfg.earlystop.monitor == "val_loss" else 0
@@ -116,7 +121,7 @@ def main(cfg):
         print("------------------------")
         print("training")
         train_loss_results, train_metric_results = train_runner(
-            model, train_dataloader, optimizer, criterion, mIoU, device
+            model, train_dataloader, optimizer, criterion, mIoU, device, scaler=scaler
         )
 
         print("\nvalidation")

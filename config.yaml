@@ -6,18 +6,19 @@ earlystop:
   patience: 10
   monitor: val_metric # val_loss(default), val_metric
 wandb:
-  run_name: customdeeplabv2_pretrained_contd
+  run_name: segformer_finetune
   use: True
+amp: True
 seed: 42
 
 # model
 model:
-  type: DeeplabMulti
+  type: SegFormer
   lib: torch # torch(base), smp
   args: 
     num_classes: 13
     pretrained: True
-  load_from: ./experiments/022_20230918_084033_customdeeplabv2_pretrained/23.pt
+  load_from: null
 
 # optimizer
 optimizer:
@@ -27,8 +28,8 @@ optimizer:
 
 # runner
 runner:
-  train: base_trainer
-  val: validator 
+  train: segformer_trainer
+  val: segformer_validator 
 
 # dataset
 train_dataset:
@@ -39,10 +40,10 @@ train_dataset:
   transform: 
     type: BaseAugmentation
     args:
-      resize: (448, 448)
+      resize: (540, 960)
       p: 1.0
   loader_args:
-    batch_size: 4
+    batch_size: 2
     shuffle: True
     num_workers: 4
 val_dataset:
@@ -53,9 +54,9 @@ val_dataset:
   transform: 
     type: BaseAugmentation
     args:
-      resize: (448, 448)
+      resize: (540, 960)
       p: 1.0
   loader_args:
     batch_size: 4
     shuffle: False
-    num_workers: 0
+    num_workers: 4
