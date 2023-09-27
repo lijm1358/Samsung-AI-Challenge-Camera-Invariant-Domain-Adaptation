@@ -42,13 +42,13 @@ def main():
     model.load_state_dict(ckpt["model_state_dict_seg"])
     model.to(device)
 
-    upsample = nn.Upsample((448, 448), mode="bilinear")
+    upsample = nn.Upsample((540, 960), mode="bilinear")
     with torch.no_grad():
         model.eval()
         result = []
         for images in tqdm(test_dataloader):
             images = images.float().to(device)
-            _, outputs = model(images)
+            outputs = model(images)
             outputs = upsample(outputs)
             outputs = torch.softmax(outputs, dim=1).cpu()
             outputs = torch.argmax(outputs, dim=1).numpy()
