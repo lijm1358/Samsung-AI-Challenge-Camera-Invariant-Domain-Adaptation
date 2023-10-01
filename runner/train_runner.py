@@ -66,6 +66,7 @@ def segformer_trainer(model, train_dataloader, optimizer, criterion, metric, dev
         {"train_loss": train_epoch_loss / len(train_dataloader)},
         {"train_metric": train_epoch_metric / len(train_dataloader)},
     )
+    
 def adaptseg_trainer(
         model_seg, model_D1, model_D2, train_dataloader, target_dataloader, optimizer_seg, optimizer_d1, optimizer_d2, criterion, metric, device
     ):
@@ -189,9 +190,126 @@ def adaptseg_trainer(
         "train_loss_adv_2": loss_adv_target_value2 / len(train_dataloader),
         "train_loss_D_2": loss_D_value2 / len(train_dataloader),
         "train_metric": miou_value / len(train_dataloader)}
+    
+def adaptseg_segformer_trainer(
+        model_seg, model_D1, train_dataloader, target_dataloader, optimizer_seg, optimizer_d1, criterion, metric, device, *args, **kwargs
+    ):
+    bce_loss = nn.BCEWithLogitsLoss()
+    
+    interp = nn.Upsample(size=(540, 960), mode='bilinear', align_corners=True)
+    interp_target = nn.Upsample(size=(540, 960), mode='bilinear', align_corners=True)
+
+    loss_seg_value1 = 0
+    loss_adv_target_value1 = 0
+    loss_D_value1 = 0
+    
+    miou_value = 0
+    
+    model_seg.train()
+    model_D1.train()
+    
+    # 2195
+    for i, ((images, masks), (images_t)) in enumerate(zip(tqdm(train_dataloader), target_dataloader)):
+        optimizer_seg.zero_grad()
+        optimizer_d1.zero_grad()
+        
+        for param in model_D1.parameters():
+            param.requires_grad = False
+            
+        images = images.float().to(device)
+        masks = masks.long().to(device)
+        
+        if "scaler" in kwargs:
+            scaler = kwargs["scaler"]
+            with torch.autocast(device_type="cuda", dtype=torch.float16):
+                # source segmentation training
+                pred1 = model_seg(images)
+                pred1 = interp(pred1)
+                loss_seg1 = criterion(pred1, masks)
+                loss = loss_seg1
+                scaler.scale(loss).backward()
+                loss_seg_value1 += loss_seg1.item()
+                miou_value += metric(pred1, masks).item()
+                
+                # target segmentation training
+                images_t = images_t.float().to(device)
+                pred_target1 = model_seg(images_t)
+                pred_target1 = interp_target(pred_target1)
+                D_out1 = model_D1(F.softmax(pred_target1, dim=1))
+                loss_adv_target1 = bce_loss(D_out1, torch.FloatTensor(D_out1.data.size()).fill_(0).to(device))
+                loss = 0.1 * loss_adv_target1
+                scaler.scale(loss).backward()
+                loss_adv_target_value1 += loss_adv_target1.item()
+                
+                # discriminator training
+                for params in model_D1.parameters():
+                    params.requires_grad = True
+                pred1 = pred1.detach()
+                D_out1 = model_D1(F.softmax(pred1, dim=1))
+                loss_D1 = bce_loss(D_out1, torch.FloatTensor(D_out1.data.size()).fill_(0).to(device))
+                loss_D1 /= 2
+                scaler.scale(loss_D1).backward()
+                loss_D_value1 += loss_D1.item()
+
+                pred_target1 = pred_target1.detach()
+                D_out1 = model_D1(F.softmax(pred_target1, dim=1))
+                loss_D1 = bce_loss(D_out1, torch.FloatTensor(D_out1.data.size()).fill_(1).to(device))
+                loss_D1 /= 2
+                scaler.scale(loss_D1).backward()
+                loss_D_value1 += loss_D1.item()
+                
+                scaler.step(optimizer_seg)
+                scaler.step(optimizer_d1)
+                
+                scaler.update()
+        else:
+            pred1 = model_seg(images)
+            pred1 = interp(pred1)
+            loss_seg1 = criterion(pred1, masks)
+            loss = loss_seg1
+            loss.backward()
+            loss_seg_value1 += loss_seg1.item()
+            miou_value += metric(pred1, masks).item()
+            
+            # target segmentation training
+            images_t = images_t.float().to(device)
+            pred_target1 = model_seg(images_t)
+            pred_target1 = interp_target(pred_target1)
+            D_out1 = model_D1(F.softmax(pred_target1, dim=1))
+            loss_adv_target1 = bce_loss(D_out1, torch.FloatTensor(D_out1.data.size()).fill_(0).to(device))
+            loss = 0.001 * loss_adv_target1
+            loss.backward()
+            loss_adv_target_value1 += loss_adv_target1.item()
+            
+            # discriminator training
+            for params in model_D1.parameters():
+                params.requires_grad = True
+            pred1 = pred1.detach()
+            D_out1 = model_D1(F.softmax(pred1, dim=1))
+            loss_D1 = bce_loss(D_out1, torch.FloatTensor(D_out1.data.size()).fill_(0).to(device))
+            loss_D1 /= 2
+            loss_D1.backward()
+            loss_D_value1 += loss_D1.item()
+
+            pred_target1 = pred_target1.detach()
+            D_out1 = model_D1(F.softmax(pred_target1, dim=1))
+            loss_D1 = bce_loss(D_out1, torch.FloatTensor(D_out1.data.size()).fill_(1).to(device))
+            loss_D1 /= 2
+            loss_D1.backward()
+            loss_D_value1 += loss_D1.item()
+            
+            optimizer_seg.step()
+            optimizer_d1.step()
+            
+        
+
+    return {"train_loss_seg_1": loss_seg_value1 / len(train_dataloader),
+        "train_loss_adv_1": loss_adv_target_value1 / len(train_dataloader),
+        "train_loss_D_1": loss_D_value1 / len(train_dataloader),
+        "train_metric": miou_value / len(train_dataloader)}
 
 def validator(model, val_dataloaders, criterion, metric, device, *args, **kwargs):
-    upsample = nn.Upsample((448, 448), mode="bilinear")
+    upsample = nn.Upsample((540, 960), mode="bilinear")
     model.eval()
     val_loss_list = {}
     val_metric_list = {}
@@ -208,6 +326,8 @@ def validator(model, val_dataloaders, criterion, metric, device, *args, **kwargs
                     outputs = upsample(outputs)
                 else:
                     outputs = model(images)
+                    if model.__class__.__name__ in ["SegFormer"]:
+                        outputs = upsample(outputs)
                 loss = criterion(outputs, masks.squeeze(1))
 
                 epoch_loss_val += loss.item()

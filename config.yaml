@@ -3,10 +3,10 @@ device: cuda:0
 epochs: 100
 expr_save_path: ./experiments
 earlystop: 
-  patience: 10
+  patience: 50
   monitor: val_metric # val_loss(default), val_metric
 wandb:
-  run_name: adaptseg_pretrained
+  run_name: SegFormer_AdaptSeg
   use: True
 amp: True
 seed: 42
@@ -30,7 +30,7 @@ optimizer:
 
 # runner
 runner:
-  train: adaptseg_trainer
+  train: adaptseg_segformer_trainer
   val: validator 
 
 

@@ -30,7 +30,7 @@ def main():
     
     transform = BaseAugmentation(resize=cfg.train_dataset.transform.args.resize)
     test_dataset = FisheyeDataset(csv_file="./data/test.csv", transform=transform, infer=True)
-    test_dataloader = DataLoader(test_dataset, batch_size=4, shuffle=False, num_workers=1)
+    test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=1)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -38,7 +38,7 @@ def main():
         model = getattr(smp, cfg.model.type)(**cfg.model.args).to(device)
     else:
         model = getattr(models, cfg.model.type)(**cfg.model.args).to(device)
-    ckpt = torch.load("./experiments/031_20230920_151134_adaptseg_pretrained_highadvloss/47.pt")
+    ckpt = torch.load("./experiments/043_20230927_094021_SegFormer_AdaptSeg/18.pt")
     model.load_state_dict(ckpt["model_state_dict_seg"])
     model.to(device)
 
@@ -49,7 +49,7 @@ def main():
         for images in tqdm(test_dataloader):
             images = images.float().to(device)
             outputs = model(images)
-            outputs = upsample(outputs)
+            # outputs = upsample(outputs)
             outputs = torch.softmax(outputs, dim=1).cpu()
             outputs = torch.argmax(outputs, dim=1).numpy()
             # batch에 존재하는 각 이미지에 대해서 반복
@@ -69,7 +69,7 @@ def main():
 
     submit = pd.read_csv("./data/sample_submission.csv")
     submit["mask_rle"] = result
-    submit.to_csv("./customdeeplabv2_pretrained_highadvloss.csv", index=False)
+    submit.to_csv("./outputs/segformer_adaptseg_18pt_reinf.csv", index=False)
 
 
 if __name__ == "__main__":

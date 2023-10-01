@@ -84,19 +84,19 @@ def main(cfg):
         model_seg = getattr(models, cfg.model.type)(**cfg.model.args).to(device)
         
     model_D1 = models.FCDiscriminator(13)
-    model_D2 = models.FCDiscriminator(13)
+    # model_D2 = models.FCDiscriminator(13)
     
     model_D1.train()
-    model_D2.train()
+    # model_D2.train()
     
     model_D1.to(device)
-    model_D2.to(device)
+    # model_D2.to(device)
 
     # loss function과 optimizer 정의
     criterion = torch.nn.CrossEntropyLoss()
     optimizer_seg = getattr(torch.optim, cfg.optimizer.type)(model_seg.parameters(), **cfg.optimizer.args)
     optimizer_d1 = torch.optim.Adam(model_D1.parameters(), lr=1e-4, betas=(0.9, 0.99))
-    optimizer_d2 = torch.optim.Adam(model_D2.parameters(), lr=1e-4, betas=(0.9, 0.99))
+    # optimizer_d2 = torch.optim.Adam(model_D2.parameters(), lr=1e-4, betas=(0.9, 0.99))
 
     cur_epoch = 0
     # model checkpoint load
@@ -104,10 +104,10 @@ def main(cfg):
         checkpoint = torch.load(cfg.model.load_from)
         model_seg.load_state_dict(checkpoint["model_state_dict_seg"])
         model_D1.load_state_dict(checkpoint["model_state_dict_d1"])
-        model_D2.load_state_dict(checkpoint["model_state_dict_d2"])
+        # model_D2.load_state_dict(checkpoint["model_state_dict_d2"])
         optimizer_seg.load_state_dict(checkpoint["optimizer_state_dict_seg"])
         optimizer_d1.load_state_dict(checkpoint["optimizer_state_dict_d1"])
-        optimizer_d2.load_state_dict(checkpoint["optimizer_state_dict_d2"])
+        # optimizer_d2.load_state_dict(checkpoint["optimizer_state_dict_d2"])
         cur_epoch = checkpoint["epoch"]
         
     # amp
@@ -144,7 +144,7 @@ def main(cfg):
         #     model, train_dataloader, optimizer, criterion, mIoU, device
         # )
         train_results = train_runner(
-            model_seg, model_D1, model_D2, train_dataloader, target_dataloader, optimizer_seg, optimizer_d1, optimizer_d2, criterion, mIoU, device, scaler=scler
+            model_seg, model_D1, train_dataloader, target_dataloader, optimizer_seg, optimizer_d1, criterion, mIoU, device, scaler=scaler
         )
 
         print("\nvalidation")
@@ -175,10 +175,8 @@ def main(cfg):
                 "epoch": epoch + 1,
                 "model_state_dict_seg": model_seg.state_dict(),
                 "model_state_dict_d1": model_D1.state_dict(),
-                "model_state_dict_d2": model_D2.state_dict(),
                 "optimizer_state_dict_seg": optimizer_seg.state_dict(),
                 "optimizer_state_dict_d1": optimizer_d1.state_dict(),
-                "optimizer_state_dict_d2": optimizer_d2.state_dict()
             },
             os.path.join(expr_save_path, f"{epoch+1:02d}.pt"),
         )
@@ -208,10 +206,8 @@ def main(cfg):
                     "epoch": epoch + 1,
                     "model_state_dict_seg": model_seg.state_dict(),
                     "model_state_dict_d1": model_D1.state_dict(),
-                    "model_state_dict_d2": model_D2.state_dict(),
                     "optimizer_state_dict_seg": optimizer_seg.state_dict(),
                     "optimizer_state_dict_d1": optimizer_d1.state_dict(),
-                    "optimizer_state_dict_d2": optimizer_d2.state_dict()
                 },
                 os.path.join(expr_save_path, "best.pt"),
             )
