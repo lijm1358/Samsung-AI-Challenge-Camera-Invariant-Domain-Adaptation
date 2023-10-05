@@ -12,11 +12,11 @@ class SegFormer(nn.Module):
         if num_classes != 19:
             self.model.decode_head.classifier = nn.Conv2d(768, num_classes, kernel_size=(1, 1), stride=(1, 1))
 
-    def forward(self, x, mask):
+    def forward(self, x, mask=None):
         # inputs = self.processor(images=x, return_tensors="pt")
-        outputs = self.model(x, mask)
-        return outputs.loss, outputs.logits  # shape (batch_size, num_labels, height/4, width/4)
-    
-    def forward(self, x):
-        outputs = self.model(x)
-        return outputs.logits
+        if mask is None:
+            outputs = self.model(x)
+            return outputs.logits
+        else:
+            outputs = self.model(x, mask)
+            return outputs.loss, outputs.logits  # shape (batch_size, num_labels, height/4, width/4)
